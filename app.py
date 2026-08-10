@@ -1,12 +1,11 @@
 # ============================================
-# FRESHIPPO PREMIUM v7.0 - CLEAN NO SLEEP
+# FRESHIPPO PREMIUM v7.1 - FINAL CORRECT
 # ============================================
 
 import os
 import sys
 from datetime import timedelta, datetime
 from decimal import Decimal
-from functools import wraps
 
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify, make_response, redirect
@@ -25,12 +24,14 @@ sys.stdout.reconfigure(encoding='utf-8')
 app = Flask(__name__)
 CORS(app)
 
-# === DATABASE URL FIX FOR RENDER + PSYCOPG3 ===
+# === DATABASE URL FIX FOR RENDER + PSYCOPG3 + SSL ===
 db_url = os.getenv('DATABASE_URL', '')
 if db_url.startswith("postgres://"):
     db_url = db_url.replace("postgres://", "postgresql://", 1)
 if db_url.startswith("postgresql://") and "+psycopg" not in db_url:
     db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
+if 'sslmode' not in db_url and 'postgresql' in db_url and 'render.com' in db_url:
+    db_url += "?sslmode=require"  # IMPORTANT FOR RENDER POSTGRES
 if not db_url:
     db_url = "sqlite:///freshippo.db"
 
@@ -108,12 +109,15 @@ with app.app_context():
             'balance': 'NUMERIC(10,2) DEFAULT 0.00', 'total_withdrawn': 'NUMERIC(10,2) DEFAULT 0.00',
             'current_stage': 'INTEGER DEFAULT 1', 'stage_status': "VARCHAR(20) DEFAULT 'pending'",
             'stage_updated_at': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP', 'language': "VARCHAR(10) DEFAULT 'en'",
+            'phone': 'VARCHAR(20) DEFAULT ''' 
         }
         for col_name, col_definition in missing_columns.items():
             if col_name not in existing_columns:
                 db.session.execute(text(f'ALTER TABLE "user" ADD COLUMN {col_name} {col_definition}'))
                 db.session.commit()
-    except: db.session.rollback()
+    except Exception as e: 
+        print(f"Migration error: {e}")
+        db.session.rollback()
 
 # ============================================
 # HELPERS
@@ -128,12 +132,13 @@ def get_current_user():
 # PUBLIC PAGES
 # ============================================
 @app.route('/')
-def homepage(): return '<h1 style="text-align:center;color:white;background:#0f0c29;padding:50px">🛒 Freshippo API v7.0 LIVE</h1><p style="text-align:center"><a href="/loginpage">Login</a> | <a href="/dashboard">Dashboard</a></p>'
+def homepage(): 
+    return '<h1 style="text-align:center;color:white;background:#0f0c29;padding:50px">🛒 Freshippo API v7.1 LIVE</h1><p style="text-align:center"><a href="/loginpage" style="color:#a855f7">Login</a> | <a href="/dashboard" style="color:#a855f7">Dashboard</a></p>'
 
 @app.route('/health')
 def health(): 
-    try: db.session.execute(text('SELECT 1')); return jsonify({"status": "healthy"}), 200
-    except Exception as e: return jsonify({"status": "error"}), 500
+    try: db.session.execute(text('SELECT 1')); return jsonify({"status": "healthy", "db": "connected"}), 200
+    except Exception as e: return jsonify({"status": "error", "db": str(e)}), 500
 
 @app.route('/ping') # ANTI-SLEEP FOR CRON-JOB
 def ping(): return "pong", 200
@@ -145,7 +150,7 @@ def signup_page():
         if User.query.filter_by(email=email).first(): return "Email exists <a href='/signup'>Back</a>"
         user = User(email=email, name=name); user.password_hash = generate_password_hash(password)
         db.session.add(user); db.session.commit(); return redirect('/loginpage')
-    return '''<style>body{background:#0f0c29;color:white;font-family:Poppins}</style><form method='POST' style='max-width:300px;margin:50px auto;padding:30px;background:rgba(255,255,255,0.05);border-radius:20px'><h2>Sign Up</h2><input name='name' placeholder='Name' required style='width:100%;padding:12px;margin:8px 0;border-radius:10px'><input name='email' type='email' required placeholder='Email' style='width:100%;padding:12px;margin:8px 0;border-radius:10px'><input name='password' type='password' required placeholder='Password' style='width:100%;padding:12px;margin:8px 0;border-radius:10px'><button style='width:100%;padding:14px;background:#a855f7;color:white;border:none;border-radius:10px'>Sign Up</button></form>'''
+    return '''<style>body{background:#0f0c29;color:white;font-family:Poppins}</style><form method='POST' style='max-width:300px;margin:50px auto;padding:30px;background:rgba(255,255,255,0.05);border-radius:20px'><h2>Sign Up</h2><input name='name' placeholder='Name' required style='width:100%;padding:12px;margin:8px 0;border-radius:10px;border:none'><input name='email' type='email' required placeholder='Email' style='width:100%;padding:12px;margin:8px 0;border-radius:10px;border:none'><input name='password' type='password' required placeholder='Password' style='width:100%;padding:12px;margin:8px 0;border-radius:10px;border:none'><button style='width:100%;padding:14px;background:#a855f7;color:white;border:none;border-radius:10px;font-weight:bold'>Sign Up</button></form>'''
 
 @app.route('/loginpage', methods=['GET', 'POST'])
 def login_page():
@@ -156,7 +161,7 @@ def login_page():
             token = create_access_token(identity=str(user.id))
             resp = make_response(redirect('/dashboard')); resp.set_cookie('access_token', token, httponly=True); return resp
         return "Wrong credentials <a href='/loginpage'>Back</a>"
-    return '''<style>body{background:#0f0c29;color:white;font-family:Poppins}</style><form method='POST' style='max-width:300px;margin:50px auto;padding:30px;background:rgba(255,255,255,0.05);border-radius:20px'><h2>Login</h2><input name='email' type='email' required placeholder='Email' style='width:100%;padding:12px;margin:8px 0;border-radius:10px'><input name='password' type='password' required placeholder='Password' style='width:100%;padding:12px;margin:8px 0;border-radius:10px'><button style='width:100%;padding:14px;background:#a855f7;color:white;border:none;border-radius:10px'>Sign In</button></form>'''
+    return '''<style>body{background:#0f0c29;color:white;font-family:Poppins}</style><form method='POST' style='max-width:300px;margin:50px auto;padding:30px;background:rgba(255,255,255,0.05);border-radius:20px'><h2>Login</h2><input name='email' type='email' required placeholder='Email' style='width:100%;padding:12px;margin:8px 0;border-radius:10px;border:none'><input name='password' type='password' required placeholder='Password' style='width:100%;padding:12px;margin:8px 0;border-radius:10px;border:none'><button style='width:100%;padding:14px;background:#a855f7;color:white;border:none;border-radius:10px;font-weight:bold'>Sign In</button></form>'''
 
 @app.route('/logout')
 def logout(): resp = make_response(redirect('/loginpage')); resp.set_cookie('access_token', '', expires=0); return resp
@@ -169,9 +174,9 @@ def dashboard():
     user = get_current_user()
     if not user: return redirect('/loginpage')
     products = Product.query.all()
-    admin_btn = '<a href="/admin/dashboard">👑 Admin</a>' if user.is_admin else ''
-    products_html = "".join([f"<div><h3>{p.name}</h3><p>${p.price}</p><a href=/cart/add/{p.id}>Add +$0.40</a></div>" for p in products])
-    return f'<h1>Welcome {user.name}</h1><p>Balance: ${user.balance}</p><a href="/withdraw">Withdraw</a> <a href="/settings">Settings</a> {admin_btn}<hr>{products_html}'
+    admin_btn = '<a href="/admin/dashboard" style="color:gold">👑 Admin</a>' if user.is_admin else ''
+    products_html = "".join([f"<div style='padding:15px;margin:10px;background:rgba(255,255,255,0.05);border-radius:10px'><h3>{p.name}</h3><p>${p.price}</p><a href=/cart/add/{p.id} style='color:#a855f7'>Add +$0.40</a></div>" for p in products])
+    return f'<style>body{{background:#0f0c29;color:white;font-family:Poppins;padding:20px}}</style><h1>Welcome {user.name}</h1><p>Balance: ${float(user.balance)}</p><a href="/withdraw" style="color:#a855f7">Withdraw</a> | <a href="/settings" style="color:#a855f7">Settings</a> | <a href="/withdraw/history" style="color:#a855f7">History</a> | {admin_btn}<hr>{products_html}'
 
 @app.route('/cart/add/<int:product_id>')
 def add_to_cart(product_id):
@@ -192,18 +197,21 @@ def withdraw():
     if not user: return redirect('/loginpage')
     if request.method == 'POST':
         amount = Decimal(request.form.get('amount', '0'))
-        if amount > 0 and amount <= user.balance:
+        phone = request.form.get('phone')
+        password = request.form.get('password')
+        if check_password_hash(user.password_hash, password) and amount > 0 and amount <= user.balance:
             db.session.add(Withdrawal(user_id=user.id, amount=amount)); user.balance -= amount; db.session.commit()
             return "Request sent <a href='/dashboard'>Back</a>"
-    return f'<form method="POST">Balance: ${user.balance}<br><input name="amount" type="number" step="0.01"><input name="phone" placeholder="Phone"><input name="password" type="password"><button>Request</button></form>'
+        return "Wrong password or amount"
+    return f'<style>body{{background:#0f0c29;color:white;font-family:Poppins;padding:20px}}</style><form method="POST"><h2>Withdraw</h2>Balance: ${float(user.balance)}<br><br><input name="amount" type="number" step="0.01" placeholder="Amount"><br><br><input name="phone" placeholder="Phone Number" value="{user.phone}"><br><br><input name="password" type="password" placeholder="Confirm Password"><br><br><button>Request Withdrawal</button></form>'
 
 @app.route('/withdraw/history')
 def withdraw_history():
     user = get_current_user()
     if not user: return redirect('/loginpage')
     withdrawals = Withdrawal.query.filter_by(user_id=user.id).all()
-    rows = "".join([f"<tr><td>${float(w.amount)}</td><td>{w.status}</td></tr>" for w in withdrawals])
-    return f'<h1>History</h1><table>{rows}</table><a href="/dashboard">Back</a>'
+    rows = "".join([f"<tr><td>${float(w.amount)}</td><td>{w.status}</td><td>{w.requested_at.strftime('%Y-%m-%d')}</td></tr>" for w in withdrawals])
+    return f'<style>body{{background:#0f0c29;color:white;font-family:Poppins;padding:20px}}table{{width:100%}}</style><h1>Withdrawal History</h1><table border="1"><tr><th>Amount</th><th>Status</th><th>Date</th></tr>{rows}</table><br><a href="/dashboard">Back</a>'
 
 @app.route('/settings', methods=['GET', 'POST'])
 def settings():
@@ -214,7 +222,7 @@ def settings():
         new_password = request.form.get('new_password', '')
         if new_password: user.password_hash = generate_password_hash(new_password)
         db.session.commit(); return redirect('/settings')
-    return f'<form method="POST">Phone: <input name="phone" value="{user.phone}"><br>New Pass: <input name="new_password" type="password"><button>Save</button></form>'
+    return f'<style>body{{background:#0f0c29;color:white;font-family:Poppins;padding:20px}}</style><form method="POST"><h2>Settings</h2>Phone: <input name="phone" value="{user.phone}"><br><br>New Password: <input name="new_password" type="password"><br><br><button>Save</button></form>'
 
 # ============================================
 # ADMIN
@@ -226,7 +234,7 @@ def admin_dashboard():
     if not user or not user.is_admin: return "Unauthorized", 403
     withdrawals = Withdrawal.query.all()
     w_rows = "".join([f"<tr><td>{w.id}</td><td>${float(w.amount)}</td><td>{w.status}</td><td><a href=/admin/approve-withdrawal/{w.id}>Approve</a></td></tr>" for w in withdrawals])
-    return f'<h1>Admin</h1><table>{w_rows}</table>'
+    return f'<style>body{{background:#0f0c29;color:white;font-family:Poppins;padding:20px}}</style><h1>Admin Panel</h1><table border="1">{w_rows}</table>'
 
 @app.route('/admin/approve-withdrawal/<int:withdrawal_id>')
 @jwt_required()
@@ -244,6 +252,6 @@ def add_product():
     if request.method == 'POST':
         db.session.add(Product(name=request.form.get('name'), price=request.form.get('price'), stock=request.form.get('stock')))
         db.session.commit(); return redirect('/dashboard')
-    return '<form method="post"><input name="name"><input name="price"><input name="stock"><button>Add</button></form>'
+    return '<style>body{{background:#0f0c29;color:white;font-family:Poppins;padding:20px}}</style><form method="post"><h2>Add Product</h2><input name="name" placeholder="Name"><br><input name="price" placeholder="Price"><br><input name="stock" placeholder="Stock"><br><button>Add</button></form>'
 
 if __name__ == '__main__': app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
