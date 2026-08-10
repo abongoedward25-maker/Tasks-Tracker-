@@ -29,8 +29,7 @@ app.config['SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'change-this-secret')
 db_url = os.getenv('DATABASE_URL', '')
 if db_url.startswith("postgres://"):
     db_url = db_url.replace("postgres://", "postgresql://", 1)
-if db_url.startswith("postgresql://") and "+psycopg" not in db_url:
-    db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
+ 
 if not db_url:
     db_url = "sqlite:///freshippo.db"
 
