@@ -1,5 +1,5 @@
 # ============================================
-# FRESHIPPO PREMIUM v5.1 - FIXED COMPLETE CODE
+# FRESHIPPO PREMIUM v5.2 - FINAL STABLE CODE
 # ============================================
 
 import os
@@ -217,6 +217,11 @@ def health():
         return jsonify({"status": "healthy"}), 200
     except Exception as e:
         return jsonify({"status": "error", "db": str(e)}), 500
+
+
+@app.route('/ping')
+def ping():
+    return "pong", 200
 
 
 @app.route('/signup', methods=['GET', 'POST'])
@@ -782,8 +787,5 @@ def reject_withdrawal(withdrawal_id):
 # RUN
 # ============================================
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
-
-@app.route('/ping')
-def ping():
-    return "pong", 200
+    debug_mode = os.getenv('FLASK_DEBUG', 'False').lower() in ['true', '1', 'yes']
+    app.run(debug=debug_mode, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
