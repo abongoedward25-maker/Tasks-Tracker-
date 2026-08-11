@@ -1,9 +1,8 @@
 # ============================================
-# FRESHIPPO PREMIUM v7.3 - FINAL NO ERROR
+# FRESHIPPO PREMIUM v7.3 - RENDER FIXED
 # ============================================
 
 import os
-import sys
 from datetime import timedelta, datetime
 from decimal import Decimal
 
@@ -16,21 +15,22 @@ from sqlalchemy import text
 from werkzeug.security import generate_password_hash, check_password_hash
 
 load_dotenv()
-sys.stdout.reconfigure(encoding='utf-8')
+# REMOVED sys.stdout.reconfigure - crashes on Render
 
 app = Flask(__name__)
 CORS(app)
 
-# === DATABASE URL FIX + SAFE FALLBACK ===
-db_url = os.getenv('DATABASE_URL', '')
-if db_url.startswith("postgres://"):
-    db_url = db_url.replace("postgres://", "postgresql://", 1)
-if db_url.startswith("postgresql://") and "+psycopg" not in db_url:
-    db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
-if 'sslmode' not in db_url and 'postgresql' in db_url and 'render.com' in db_url:
-    db_url += "?sslmode=require"
-if not db_url:
+# === DATABASE URL FIX + SAFE FALLBACK FOR RENDER ===
+db_url = os.getenv('DATABASE_URL')
+if not db_url or db_url == "":
     db_url = "sqlite:///freshippo.db"
+else:
+    if db_url.startswith("postgres://"):
+        db_url = db_url.replace("postgres://", "postgresql://", 1)
+    if db_url.startswith("postgresql://") and "+psycopg" not in db_url:
+        db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
+    if 'sslmode' not in db_url and 'render.com' in db_url:
+        db_url += "?sslmode=require"
 
 app.config['SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'freshippo-super-secret-key-2026')
 app.config['SQLALCHEMY_DATABASE_URI'] = db_url
@@ -84,14 +84,13 @@ class Withdrawal(db.Model):
     requested_at = db.Column(db.DateTime, server_default=db.func.now())
     approved_at = db.Column(db.DateTime, nullable=True)
 
-# === LAZY DB INIT - HAICRASH KAMA DB IMEZIMA ===
-@app.before_first_request
-def create_tables():
+# === FIX: @before_first_request is deprecated in Flask 3. Use this ===
+with app.app_context():
     try:
         db.create_all()
         print("DB Tables Ready")
-    except:
-        print("DB not ready yet, will retry on first request")
+    except Exception as e:
+        print("DB not ready yet:", e)
 
 def get_current_user():
     token = request.cookies.get('access_token')
@@ -122,7 +121,7 @@ def signup_page():
             if User.query.filter_by(email=email).first(): return "Email exists <a href='/signup'>Back</a>"
             user = User(email=email, name=name); user.password_hash = generate_password_hash(password)
             db.session.add(user); db.session.commit(); return redirect('/loginpage')
-        except: return "DB Error. Try again in 10s <a href='/signup'>Back</a>"
+        except Exception as e: return f"DB Error: {e} <a href='/signup'>Back</a>"
     return '''<style>body{background:#0f0c29;color:white;font-family:Poppins}</style><form method='POST' style='max-width:300px;margin:50px auto;padding:30px;background:rgba(255,255,255,0.05);border-radius:20px'><h2>Sign Up</h2><input name='name' placeholder='Name' required style='width:100%;padding:12px;margin:8px 0;border-radius:10px;border:none'><input name='email' type='email' required placeholder='Email' style='width:100%;padding:12px;margin:8px 0;border-radius:10px;border:none'><input name='password' type='password' required placeholder='Password' style='width:100%;padding:12px;margin:8px 0;border-radius:10px;border:none'><button style='width:100%;padding:14px;background:#a855f7;color:white;border:none;border-radius:10px;font-weight:bold'>Sign Up</button></form>'''
 
 @app.route('/loginpage', methods=['GET', 'POST'])
@@ -133,7 +132,7 @@ def login_page():
             user = User.query.filter_by(email=email).first()
             if user and check_password_hash(user.password_hash, password):
                 token = create_access_token(identity=str(user.id))
-                resp = make_response(redirect('/dashboard')); resp.set_cookie('access_token', token, httponly=True); return resp
+                resp = make_response(redirect('/dashboard')); resp.set_cookie('access_token', token, httponly=True, samesite='Lax'); return resp
         except: pass
         return "Wrong credentials or DB not ready <a href='/loginpage'>Back</a>"
     return '''<style>body{background:#0f0c29;color:white;font-family:Poppins}</style><form method='POST' style='max-width:300px;margin:50px auto;padding:30px;background:rgba(255,255,255,0.05);border-radius:20px'><h2>Login</h2><input name='email' type='email' required placeholder='Email' style='width:100%;padding:12px;margin:8px 0;border-radius:10px;border:none'><input name='password' type='password' required placeholder='Password' style='width:100%;padding:12px;margin:8px 0;border-radius:10px;border:none'><button style='width:100%;padding:14px;background:#a855f7;color:white;border:none;border-radius:10px;font-weight:bold'>Sign In</button></form>'''
@@ -224,4 +223,4 @@ def approve_withdrawal(withdrawal_id):
     except: pass
     return redirect('/admin/dashboard')
 
-if __name__ == '__main__': app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+if __name__ == '__main__': app
